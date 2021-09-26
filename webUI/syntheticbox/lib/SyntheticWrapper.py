@@ -9,6 +9,9 @@ from syndata import synthetic_analyzer as ana
 
 from syndata.lib.utils import get_synthetic_key
 
+import sys
+import traceback
+
 def read_metadata(json_file):
     with open(json_file, 'r') as file:
         return json.load(file)
@@ -76,6 +79,107 @@ def get_histogram_data(df):
 def get_syndata_key():
     return get_synthetic_key('TheSyntheticPassword','America/Caracas')
 
+def validateDataSetCorrectness(dataFrame,columnName):
+    if dataFrame.empty:
+        raise EmptyDataSet()
+    else:
+        if columnName in dataFrame.columns:
+            return
+        else:
+            raise MissingJoinColumnInDataSet(columnName,"Missing join column in dataset!!")
+
+def log_exception(exception: BaseException, expected: bool = True):
+    """Prints the passed BaseException to the console, including traceback.
+
+    :param exception: The BaseException to output.
+    :param expected: Determines if BaseException was expected.
+    """
+    output = "[{}] {}: {}".format('EXPECTED' if expected else 'UNEXPECTED', type(exception).__name__, exception)
+    print(output)
+    exc_type, exc_value, exc_traceback = sys.exc_info()
+    traceback.print_tb(exc_traceback)
+
+def convertFileToDataFrame(inputFileName):
+    dataframe = None
+    try:
+        input_dataset_file = open(inputFileName, "r")
+        dataframe = pd.read_csv(input_dataset_file)
+     except FileNotFoundError as error:
+        log_exception(error)
+    except MemoryError as error:
+        log_exception(error)
+    finally:
+        input_dataset_file.close()
+
+    return dataframe
+
+def get_joined_dataframe(dataframe1, dataframe2, onColumn=None,onRight = None,onLeft=None,howTo=None, timeSeriesJoin=None):
+    #choosing merge command to have control over the join being done instead of join command
+    if(onColumn != None):
+
+        # validate sanity of dataframe here
+        validateDataSetCorrectness(dataFrame=dataframe1,columnName=onColumn)
+        validateDataSetCorrectness(dataFrame=dataframe2,columnName=onColumn)
+
+        result = dataframe1.merge(dataframe2,on=onColumn,how=howTo)
+    else:
+        # validate sanity of dataframes here
+        validateDataSetCorrectness(dataFrame=dataframe1, columnName=onLeft)
+        validateDataSetCorrectness(dataFrame=dataframe2, columnName=onRight)
+
+        result = dataframe1.merge(dataframe2, left_on=onLeft,right_on=onRight, how=howTo)
+    print("Joined result: ")
+    print(result)
+    return result
+
+def get_joined_dataframe_final(input_dataset_file, timeSeriesJoin = None, onColumn = None,onRight = None,onLeft=None, howTo = None):
+    # convert input files to dataframe and then use for further processing
+    i = 0
+    dataframes = {}
+    for eachFile in input_dataset_file:
+        dataframes[i] = convertFileToDataFrame(eachFile)
+        i= i+1
+
+    i = 0
+    j = 1
+    result = dataframes[i]
+    while(i < (len(dataframes.keys())) & j < (len(dataframes.keys()))):
+        result = get_joined_dataframe(result,dataframes[j],onColumn,onLeft,onRight,howTo)
+        i = i+ 1
+        j = j +1
+
+    print(result)
 
 if __name__ == '__main__':
-    print("__main__")
+    filenames = {"sample1.csv","sample2.csv","sample3.csv"}
+    #test with one column join
+    get_joined_dataframe_final(filenames, None, 'Sl No',None,None, 'outer')
+    #multiple column join
+    get_joined_dataframe_final(filenames, None,None, 'Sl No','Sl No', 'outer')
+
+class MissingJoinColumnInDataSet(Exception):
+    """Exception raised for errors if columns used for join are missing in dataset.
+
+    Attributes:
+        columnName -- input columnName which caused the error
+        message -- explanation of the error
+    """
+
+    def __init__(self, columnName, message="Columnname is not present in dataset"):
+        self.columnName = columnName
+        self.message = message
+        super().__init__(self.message)
+
+class EmptyDataSet(Exception):
+    """Exception raised for errors if empty dataset is input.
+
+    Attributes:
+        message -- explanation of the error
+    """
+
+    def __init__(self,message="Empty dataset, retry with proper dataset"):
+        self.message = message
+        super().__init__(self.message)
+
+#if __name__ == '__main__':
+#    print("__main__")
